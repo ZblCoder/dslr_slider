@@ -84,12 +84,14 @@ void DrawSpeed(int value)
 
 void SetDirection(DirectionType value)
 {
-    if (direction = value)
+    if (direction == value)
         return;
-    Serial.println("SetDirection");
     direction = value;
     int vector = value == Forward ? START_VECTOR : -START_VECTOR;
-    digitalWrite(MOTOR_DIRECTION, vector > 0 ? HIGH : LOW);
+    uint8_t directionValue = vector > 0 ? HIGH : LOW;
+    digitalWrite(MOTOR_DIRECTION, directionValue);
+
+    Serial.print("SetDirection: ");
     Serial.println(vector);
 }
 
@@ -110,7 +112,10 @@ void SetState(StateType value)
         if (lastState != Paused)
         {
             SetDirection(Forward);
-            speed = (time * 1000 * 1000) / length;
+            speed = (time * 1000000) / length;
+
+            Serial.print("Speed: ");
+            Serial.println(speed);
             motorLastTime = micros();
         }
         break;
@@ -118,7 +123,7 @@ void SetState(StateType value)
         Serial.println("Pause");
         break;
     case Scanning:
-        Serial.println("Start Scaning");
+        Serial.println("Scaning");
         speed = MIN_SPEED;
         EEPROM.put(4, speed);
         SetDirection(Forward);
@@ -127,6 +132,7 @@ void SetState(StateType value)
         DrawSpeed(speed);
         break;
     case Reset:
+        Serial.println("Reset");
         EEPROM.get(4, speed);
         SetDirection(Backwards);
         motorLastTime = micros();
@@ -207,12 +213,12 @@ Button EndButton(BUTTON_END);
 
 void bBegin()
 {
-    Serial.println("bBegin");
+    Serial.println("Button: Begin");
 }
 
 void bEnd()
 {
-    Serial.println("bEnd");
+    Serial.println("Button: End");
 }
 
 void setup() 
@@ -249,13 +255,29 @@ void setup()
 bool MotorLoop()
 {
     long t = micros() - motorLastTime;
-    if (t >= 100 + (MAX_SPEED - speed) * 10)
+    switch (state)
     {
-        digitalWrite(MOTOR_STEP, HIGH);
-        digitalWrite(MOTOR_STEP, LOW);
-        position += direction == Forward ? 1 : -1;
-        motorLastTime = micros();
-        return true;
+    case Movement:
+        if (t >= speed)
+        {
+            digitalWrite(MOTOR_STEP, HIGH);
+            digitalWrite(MOTOR_STEP, LOW);
+            position += direction == Forward ? 1 : -1;
+            motorLastTime = micros();
+            return true;
+        }
+        break;
+    case Scanning:
+    case Reset:
+        if (t >= 100 + (MAX_SPEED - speed) * 10)
+        {
+            digitalWrite(MOTOR_STEP, HIGH);
+            digitalWrite(MOTOR_STEP, LOW);
+            position += direction == Forward ? 1 : -1;
+            motorLastTime = micros();
+            return true;
+        }
+        break;
     }
     return false;
 }
@@ -286,9 +308,7 @@ void loop()
                 if (EndButton.IsUp())
                     MotorLoop();
                 else
-                {
                     SetDirection(Backwards);
-                }
                 break;
             case Backwards:
                 if (BeginButton.IsUp())
@@ -301,6 +321,8 @@ void loop()
                     position = 0;
                     SetState(Waiting);
                     EEPROM.put(8, length);
+                    Serial.print("Length: ");
+                    Serial.println(length);
                 }
                 break;
             }
